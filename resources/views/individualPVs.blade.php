@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="/public">
+    <title>PV individuels pour la session</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+@extends('layouts.layout')
+
+@section('content')
+<main id="main" class="main">
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title"></h5>
+
+        <nav>
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ route('dashboard') }}"><i class="bi bi-house-door"></i></a></li>
+                <li class="breadcrumb-item"><a href="{{ route('commissions.index') }}">Commissions</a></li>
+                <li class="breadcrumb-item active">Modifier</li>
+            </ol>
+        </nav>
+        @if(session('success'))
+            <div class="col-12">
+                <div class="alert alert-success" role="alert">
+                    {{ session('success') }}
+                </div>
+            </div>
+        @endif
+        @if(session('error'))
+            <div class="col-12">
+                <div class="alert alert-danger" role="alert">
+                    {{ session('error') }}
+                </div>
+            </div>
+        @endif
+    </div>
+</div>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title"><center>PV individuels pour la session {{ \Carbon\Carbon::parse($session->date)->locale('fr')->isoFormat('D MMMM YYYY') }}</center></h5>
+                    
+                    <div class="container mt-5">
+                        <h1 class="mb-4"></h1>
+
+                        <div id="alert-container"></div>
+
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Nom du Doctorant</th>
+                                    <th>Avis</th>
+                                    <th>PV</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($doctorants as $doctorant)
+                                    @php
+                                        $pv = $pvs->firstWhere('doctorant_id', $doctorant->id);
+                                        $demande = $demandes->firstWhere('id_these', $doctorant->these->id);
+                                    @endphp
+                                    <tr data-doctorant-id="{{ $doctorant->id }}">
+                                        <td>{{ $doctorant->prenom }} {{ $doctorant->nom }}</td>
+                                        <td>
+                                            <span class="avis-label">
+                                                @if ($demande && $demande->etat == 'Acceptée')
+                                                    Favorable
+                                                @elseif ($demande && $demande->etat == 'Refusée')
+                                                    Défavorable
+                                                @elseif ($demande)
+                                                    {{ $demande->etat }}
+                                                @else
+                                                    Aucune demande
+                                                @endif
+                                            </span>
+
+                                            <select class="form-control d-none avis-select">
+                                                <option value="Acceptée" {{ ($demande && $demande->etat == 'Acceptée') ? 'selected' : '' }}>Favorable</option>
+                                                <option value="Refusée" {{ ($demande && $demande->etat == 'Refusée') ? 'selected' : '' }}>Défavorable</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            @if ($pv)
+                                                <a href="{{ asset('storage/' . $pv->path) }}" target="_blank" class="pv-link">Voir le PV</a>
+                                                <input type="file" class="form-control d-none pv-file" name="pv_file">
+                                            @else
+                                                Aucun PV disponible
+                                                <input type="file" class="form-control d-none pv-file" name="pv_file">
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-primary edit-global"><i class="fas fa-edit"></i> Éditer</button>
+                                            @if ($pv)
+                                                @php
+                                                    $extension = pathinfo($pv->path, PATHINFO_EXTENSION);
+                                                @endphp
+                                                <a href="{{ asset('storage/' . $pv->path) }}" class="btn btn-primary" download="{{ $pv->type }}_{{ $doctorant->nom }} {{ $doctorant->prenom }}.{{ $extension }}">
+                                                    <i class="bi bi-download"></i> Télécharger
+                                                </a>
+                                            @endif
+                                            <button class="btn btn-success save-pv d-none"><i class="fas fa-save"></i> Enregistrer</button>
+                                            <button class="btn btn-danger cancel-pv d-none"><i class="fas fa-times"></i> Annuler</button>
+                                            <form action="/commissions/{{ $session->id }}/doctorants/{{ $doctorant->id }}/updatepvindividuel" method="POST" enctype="multipart/form-data" class="d-none pv-form">
+                                                @csrf
+                                                <input type="hidden" name="doctorant_id" value="{{ $doctorant->id }}">
+                                                <input type="hidden" name="avis" class="avis-input">
+                                            </form>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const alertContainer = document.getElementById('alert-container');
+
+    function showAlert(message, type) {
+        alertContainer.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                                        ${message}
+                                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                            <span aria-hidden="true">&times;</span>
+                                        </button>
+                                    </div>`;
+    }
+
+    document.querySelectorAll('.edit-global').forEach(button => {
+        button.addEventListener('click', function() {
+            document.querySelectorAll('tbody tr').forEach(row => {
+                const avisLabel = row.querySelector('.avis-label');
+                const avisSelect = row.querySelector('.avis-select');
+                const pvLink = row.querySelector('.pv-link');
+                const pvFile = row.querySelector('.pv-file');
+
+                avisLabel.classList.add('d-none');
+                avisSelect.classList.remove('d-none');
+                if (pvLink) {
+                    pvLink.classList.add('d-none');
+                }
+                pvFile.classList.remove('d-none');
+                button.classList.add('d-none');
+                row.querySelector('.save-pv').classList.remove('d-none');
+                row.querySelector('.cancel-pv').classList.remove('d-none');
+            });
+        });
+    });
+
+    document.querySelectorAll('.cancel-pv').forEach(button => {
+        button.addEventListener('click', function() {
+            document.querySelectorAll('tbody tr').forEach(row => {
+                const avisLabel = row.querySelector('.avis-label');
+                const avisSelect = row.querySelector('.avis-select');
+                const pvLink = row.querySelector('.pv-link');
+                const pvFile = row.querySelector('.pv-file');
+
+                avisLabel.classList.remove('d-none');
+                avisSelect.classList.add('d-none');
+                if (pvLink) {
+                    pvLink.classList.remove('d-none');
+                }
+                pvFile.classList.add('d-none');
+                document.querySelector('.edit-global').classList.remove('d-none');
+                row.querySelector('.save-pv').classList.add('d-none');
+                row.querySelector('.cancel-pv').classList.add('d-none');
+            });
+        });
+    });
+
+    document.querySelectorAll('.save-pv').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = button.closest('tr');
+            const avisSelect = row.querySelector('.avis-select');
+            const avisInput = row.querySelector('.avis-input');
+            const pvFile = row.querySelector('.pv-file');
+
+            avisInput.value = avisSelect.value;
+
+            const form = row.querySelector('.pv-form');
+            form.appendChild(pvFile);
+
+            form.submit();
+        });
+    });
+});
+</script>
+
+</div>
+</div>
+</div>
+</div>
+</section>
+
+@endsection
+
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+
+</body>
+</html>
